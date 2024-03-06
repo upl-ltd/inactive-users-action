@@ -17,13 +17,21 @@ class OrganizationActivityWithEmail extends OrganizationActivity {
     // Fetch user email addresses using the GitHub API with read:user scope
     const usersWithEmail = await Promise.all(
       activities.map(async (activity) => {
+        try{
         const userInfo = await this.octokit.rest.users.getByUsername({
           username: activity.login,
         });
+          
+        console.log(`User Info for ${activity.login}:`, userInfo.data);
+
         return {
-          ...activity,
+          ...activity,  
           email: userInfo.data.email,
         };
+           } catch (error) {
+        console.error(`Error fetching user info for ${activity.login}:`, error.message);
+        return activity; // Keep the original data in case of an error
+      }
       })
     );
 
