@@ -1,5 +1,6 @@
 // const github = require('@actions/github')
 //   , core = require('@actions/core')
+
 const fs = require('fs')
   , path = require('path')
   , core = require('@actions/core')
@@ -9,7 +10,7 @@ const fs = require('fs')
   , githubClient = require('./src/github/githubClient')
   , dateUtil = require('./src/dateUtil')
 ;
-
+const axios = require('axios');
 class OrganizationActivityWithEmail extends OrganizationActivity {
   async getUserActivityWithEmail(organization, fromDate) {
     const activities = await this.getUserActivity(organization, fromDate);
@@ -21,12 +22,15 @@ class OrganizationActivityWithEmail extends OrganizationActivity {
         const userInfo = await this.octokit.rest.users.getByUsername({
           username: activity.login,
         });
+
+        const restApiEmail = await this.fetchEmailFromRestAPI(activity.login);
           
         console.log(`User Info for ${activity.login}:`, userInfo.data);
+        console.log(`Email fetched using REST API for ${activity.login}:`, restApiEmail);
 
         return {
           ...activity,  
-          email: userInfo.data.email,
+          email: userInfo.data.email || restApiEmail,
         };
            } catch (error) {
         console.error(`Error fetching user info for ${activity.login}:`, error.message);
@@ -37,7 +41,60 @@ class OrganizationActivityWithEmail extends OrganizationActivity {
 
     return usersWithEmail;
   }
+
+
+async fetchEmailFromRestAPI(username) {
+    const orgToken = process.env.ORG_TOKEN; // Use your organization token
+    const apiUrl = 'https://api.github.com/graphql';
+
+    const query = `
+      {
+        enterprise(slug: "upl") {
+          ownerInfo {
+            samlIdentityProvider {
+              externalIdentities(after: null, first: 100) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                edges {
+                  node {
+                    samlIdentity {
+                      nameId
+                    }
+                    user {
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await axios.post(apiUrl, {
+        query,
+      }, {
+        headers: {
+          Authorization: `Bearer ${orgToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const email = response.data.data.enterprise.ownerInfo.samlIdentityProvider.externalIdentities.edges
+        .find(edge => edge.node.user.login === username)?.node.samlIdentity.nameId;
+
+      return email || '';
+    } catch (error) {
+      console.error(`Error fetching email using REST API for ${username}:`, error.message);
+      return '';
+    }
+  }
 }
+
 
 
 async function run() {
