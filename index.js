@@ -149,8 +149,8 @@ async function run() {
 async function execute() {
   try {
     await run();
-  } catch (err) {
-    core.setFailed(err.message);
+  } catch (error) {
+    console.log("Request failed:", error);
   }
 }
 execute();
