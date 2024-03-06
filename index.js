@@ -10,6 +10,28 @@ const fs = require('fs')
   , dateUtil = require('./src/dateUtil')
 ;
 
+class OrganizationActivityWithEmail extends OrganizationActivity {
+  async getUserActivityWithEmail(organization, fromDate) {
+    const activities = await this.getUserActivity(organization, fromDate);
+
+    // Fetch user email addresses using the GitHub API with read:user scope
+    const usersWithEmail = await Promise.all(
+      activities.map(async (activity) => {
+        const userInfo = await this.octokit.rest.users.getByUsername({
+          username: activity.login,
+        });
+        return {
+          ...activity,
+          email: userInfo.data.email,
+        };
+      })
+    );
+
+    return usersWithEmail;
+  }
+}
+
+
 async function run() {
   const since = core.getInput('since')
     , days = core.getInput('activity_days')
@@ -30,19 +52,26 @@ async function run() {
   // Ensure that the output directory exists before we our limited API usage
   await io.mkdirP(outputDir)
 
-  const octokit = githubClient.create(token, maxRetries)
-    , orgActivity = new OrganizationActivity(octokit)
+  const octokit = githubClient.create(token, maxRetries), 
+    orgActivity = new OrganizationActivityWithEmail(octokit)
   ;
 
   console.log(`Attempting to generate organization user activity data, this could take some time...`);
-  const userActivity = await orgActivity.getUserActivity(organization, fromDate);
+  const userActivity = await orgActivity.getUserActivityWithEmail(organization, fromDate); 
   saveIntermediateData(outputDir, userActivity.map(activity => activity.jsonPayload));
 
   // Convert the JavaScript objects into a JSON payload so it can be output
   console.log(`User activity data captured, generating report...`);
-  const data = userActivity.map(activity => activity.jsonPayload)
-    , csv = json2csv.parse(data, {})
-  ;
+  const data = userActivity.map(activity => ({
+    login: activity.login,
+    email: activity.email, // Include email address in the report
+    isActive: activity.isActive,
+    commits: activity.commits,
+    issues: activity.issues,
+    issueComments: activity.issueComments,
+    prComments: activity.prComments,
+  }));
+  const csv = json2csv.parse(data, {});
 
   const file = path.join(outputDir, 'organization_user_activity.csv');
   fs.writeFileSync(file, csv);
