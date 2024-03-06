@@ -144,6 +144,12 @@ async function run() {
 
   // Expose the output csv file
   core.setOutput('report_csv', file);
+  try {
+    // ... (rest of the code)
+  } catch (error) {
+    console.error("Error in run function:", error);
+    throw error; // Rethrow the error
+  }
 }
 
 async function execute() {
